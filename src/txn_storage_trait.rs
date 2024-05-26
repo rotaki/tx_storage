@@ -24,17 +24,17 @@ pub enum Status {
 }
 
 // To String conversion
-impl ToString for Status {
-    fn to_string(&self) -> String {
-        match self {
-            Status::DBNotFound => "Database not found".to_string(),
+impl From<Status> for String {
+    fn from(status: Status) -> String {
+        match status {
+            Status::DBNotFound => "DB not found".to_string(),
             Status::ContainerNotFound => "Container not found".to_string(),
-            Status::TxNotFound => "Transaction not found".to_string(),
+            Status::TxNotFound => "Tx not found".to_string(),
             Status::KeyNotFound => "Key not found".to_string(),
-            Status::DBExists => "Database already exists".to_string(),
+            Status::DBExists => "DB already exists".to_string(),
             Status::ContainerExists => "Container already exists".to_string(),
             Status::KeyExists => "Key already exists".to_string(),
-            Status::TxnConflict => "Transaction conflict".to_string(),
+            Status::TxnConflict => "Txn conflict".to_string(),
             Status::SystemAbort => "System abort".to_string(),
             Status::Error => "Error".to_string(),
         }
