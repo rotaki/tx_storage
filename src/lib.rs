@@ -2,6 +2,7 @@ mod txn_storage_trait;
 
 mod inmem;
 
+pub use crate::inmem::{InMemDummyTxnHandle, InMemIterator, InMemStorage};
 pub use txn_storage_trait::{
     ContainerId, ContainerOptions, ContainerType, DBOptions, DatabaseId, ScanOptions, Status,
     TxnOptions, TxnStorageTrait,
@@ -9,12 +10,10 @@ pub use txn_storage_trait::{
 
 pub mod prelude {
     pub use crate::{
-        ContainerId, ContainerOptions, ContainerType, DBOptions, DatabaseId, ScanOptions, Status,
-        TxnOptions, TxnStorageTrait,
+        ContainerId, ContainerOptions, ContainerType, DBOptions, DatabaseId, InMemDummyTxnHandle,
+        InMemIterator, InMemStorage, ScanOptions, Status, TxnOptions, TxnStorageTrait,
     };
 }
-
-pub use crate::inmem::{InMemDummyTxnHandle, InMemIterator, InMemStorage};
 
 #[cfg(test)]
 mod tests {
