@@ -640,7 +640,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tx_storage"
+name = "txn_storage"
 version = "0.1.0"
 dependencies = [
  "fbtree",

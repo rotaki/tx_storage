@@ -47,7 +47,7 @@ mod tests {
             "test_container".to_string(),
             ContainerType::Hash(dummy_hash_function),
         );
-        let txn = storage.begin_tx(&db_id, TxnOptions::default()).unwrap();
+        let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
 
         let c_id = storage
             .create_container(&txn, &db_id, container_options)
@@ -62,7 +62,7 @@ mod tests {
         let db_id = storage.open_db(db_options).unwrap();
         let container_options =
             ContainerOptions::new("test_container".to_string(), ContainerType::Vec);
-        let txn = storage.begin_tx(&db_id, TxnOptions::default()).unwrap();
+        let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
         let c_id = storage
             .create_container(&txn, &db_id, container_options)
             .unwrap();
@@ -80,7 +80,7 @@ mod tests {
         let db_id = storage.open_db(db_options).unwrap();
         let container_options =
             ContainerOptions::new("test_container".to_string(), ContainerType::Vec);
-        let txn = storage.begin_tx(&db_id, TxnOptions::default()).unwrap();
+        let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
         let c_id = storage
             .create_container(&txn, &db_id, container_options)
             .unwrap();
@@ -108,7 +108,7 @@ mod tests {
         let db_id = storage.open_db(db_options).unwrap();
         let container_options =
             ContainerOptions::new("test_container".to_string(), ContainerType::Vec);
-        let txn = storage.begin_tx(&db_id, TxnOptions::default()).unwrap();
+        let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
         let c_id = storage
             .create_container(&txn, &db_id, container_options)
             .unwrap();

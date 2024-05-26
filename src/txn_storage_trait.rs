@@ -119,19 +119,20 @@ pub trait TxnStorageTrait {
     ) -> Result<HashSet<ContainerId>, Status>;
 
     // Begin a transaction
-    fn begin_tx(&self, db_id: &DatabaseId, options: TxnOptions) -> Result<Self::TxnHandle, Status>;
+    fn begin_txn(&self, db_id: &DatabaseId, options: TxnOptions)
+        -> Result<Self::TxnHandle, Status>;
 
     // Commit a transaction
-    fn commit_tx(&self, txn: &Self::TxnHandle, async_commit: bool) -> Result<(), Status>;
+    fn commit_txn(&self, txn: &Self::TxnHandle, async_commit: bool) -> Result<(), Status>;
 
     // Abort a transaction
-    fn abort_tx(&self, txn: &Self::TxnHandle) -> Result<(), Status>;
+    fn abort_txn(&self, txn: &Self::TxnHandle) -> Result<(), Status>;
 
     // Wait for a transaction to finish
-    fn wait_for_tx(&self, txn: &Self::TxnHandle) -> Result<(), Status>;
+    fn wait_for_txn(&self, txn: &Self::TxnHandle) -> Result<(), Status>;
 
     // Drop a transaction handle
-    fn drop_tx(&self, handle: Self::TxnHandle) -> Result<(), Status>;
+    fn drop_txn(&self, txn: Self::TxnHandle) -> Result<(), Status>;
 
     // Check if value exists
     fn check_value(
