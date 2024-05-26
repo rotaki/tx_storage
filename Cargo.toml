@@ -1,0 +1,8 @@
+[package]
+name = "tx_storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rstest = "0.19"
+fbtree = { git = "https://github.com/rotaki/FosterBtree.git"}
