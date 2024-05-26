@@ -72,8 +72,11 @@ pub struct ContainerOptions {
 }
 
 impl ContainerOptions {
-    pub fn new(name: String, c_type: ContainerType) -> Self {
-        ContainerOptions { name, c_type }
+    pub fn new(name: &str, c_type: ContainerType) -> Self {
+        ContainerOptions {
+            name: String::from(name),
+            c_type,
+        }
     }
 
     pub fn name(&self) -> &String {
