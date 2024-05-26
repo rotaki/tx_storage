@@ -62,9 +62,8 @@ impl DBOptions {
 
 #[derive(Clone)]
 pub enum ContainerType {
-    Vec,
-    Hash(fn(&[u8]) -> &[u8]),  // Key function. Generate key from the vec.
-    BTree(fn(&[u8]) -> &[u8]), // Key function. Generate key from the vec.
+    Hash,
+    BTree,
 }
 
 pub struct ContainerOptions {
@@ -153,19 +152,19 @@ pub trait TxnStorageTrait {
     fn drop_txn(&self, txn: Self::TxnHandle) -> Result<(), Status>;
 
     // Check if value exists
-    fn check_value(
+    fn check_value<K: AsRef<[u8]>>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
     ) -> Result<bool, Status>;
 
     // Get value
-    fn get_value(
+    fn get_value<K: AsRef<[u8]>>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
     ) -> Result<Vec<u8>, Status>;
 
     // Insert value
@@ -173,32 +172,33 @@ pub trait TxnStorageTrait {
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
+        key: Vec<u8>,
         value: Vec<u8>,
-    ) -> Result<Vec<u8>, Status>;
+    ) -> Result<(), Status>;
 
     // Insert values
     fn insert_values(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        values: Vec<Vec<u8>>,
-    ) -> Result<Vec<Vec<u8>>, Status>;
+        kvs: Vec<(Vec<u8>, Vec<u8>)>,
+    ) -> Result<(), Status>;
 
     // Update value
-    fn update_value(
+    fn update_value<K: AsRef<[u8]>>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
         value: Vec<u8>,
-    ) -> Result<Vec<u8>, Status>;
+    ) -> Result<(), Status>;
 
     // Delete value
-    fn delete_value(
+    fn delete_value<K: AsRef<[u8]>>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
     ) -> Result<(), Status>;
 
     // Scan range

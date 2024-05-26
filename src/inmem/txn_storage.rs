@@ -9,104 +9,76 @@ use std::{
 use crate::prelude::*;
 
 enum Storage {
-    Vec(Vec<Vec<u8>>),
-    HashMap(fn(&[u8]) -> &[u8], HashMap<Vec<u8>, Vec<u8>>),
-    BTreeMap(fn(&[u8]) -> &[u8], BTreeMap<Vec<u8>, Vec<u8>>),
+    HashMap(HashMap<Vec<u8>, Vec<u8>>),
+    BTreeMap(BTreeMap<Vec<u8>, Vec<u8>>),
 }
 
 impl Storage {
     fn new(c_type: ContainerType) -> Self {
         match c_type {
-            ContainerType::Vec => Storage::Vec(Vec::new()),
-            ContainerType::Hash(f) => Storage::HashMap(f, HashMap::new()),
-            ContainerType::BTree(f) => Storage::BTreeMap(f, BTreeMap::new()),
+            ContainerType::Hash => Storage::HashMap(HashMap::new()),
+            ContainerType::BTree => Storage::BTreeMap(BTreeMap::new()),
         }
     }
 
-    fn insert(&mut self, val: Vec<u8>) -> Result<Vec<u8>, Status> {
+    fn insert(&mut self, key: Vec<u8>, val: Vec<u8>) -> Result<(), Status> {
         match self {
-            Storage::Vec(v) => {
-                let len = v.len();
-                v.push(val);
-                Ok(len.to_be_bytes().to_vec())
-            }
-            Storage::HashMap(f, h) => {
-                let key = f(&val).to_vec();
-                h.insert(key.clone(), val);
-                Ok(key)
-            }
-            Storage::BTreeMap(f, b) => {
-                let key = f(&val).to_vec();
-                b.insert(key.clone(), val);
-                Ok(key)
-            }
+            Storage::HashMap(h) => match h.entry(key) {
+                std::collections::hash_map::Entry::Occupied(_) => Err(Status::KeyExists),
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(val);
+                    Ok(())
+                }
+            },
+            Storage::BTreeMap(b) => match b.entry(key) {
+                std::collections::btree_map::Entry::Occupied(_) => Err(Status::KeyExists),
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(val);
+                    Ok(())
+                }
+            },
         }
     }
 
     fn get(&self, key: &[u8]) -> Result<Vec<u8>, Status> {
         match self {
-            Storage::Vec(v) => {
-                let idx = u64::from_be_bytes(key.try_into().unwrap()) as usize;
-                match v.get(idx) {
-                    Some(val) => Ok(val.clone()),
-                    None => Err(Status::KeyNotFound),
-                }
-            }
-            Storage::HashMap(_, h) => match h.get(key) {
+            Storage::HashMap(h) => match h.get(key) {
                 Some(val) => Ok(val.clone()),
                 None => Err(Status::KeyNotFound),
             },
-            Storage::BTreeMap(_, b) => match b.get(key) {
+            Storage::BTreeMap(b) => match b.get(key) {
                 Some(val) => Ok(val.clone()),
                 None => Err(Status::KeyNotFound),
             },
         }
     }
 
-    fn update(&mut self, key: &[u8], val: Vec<u8>) -> Result<Vec<u8>, Status> {
+    fn update(&mut self, key: &[u8], val: Vec<u8>) -> Result<(), Status> {
         match self {
-            Storage::Vec(v) => {
-                let idx = u64::from_be_bytes(key.try_into().unwrap()) as usize;
-                if idx < v.len() {
-                    v[idx] = val;
-                    Ok(key.to_vec())
-                } else {
-                    Err(Status::KeyNotFound)
+            Storage::HashMap(h) => match h.get_mut(key) {
+                Some(v) => {
+                    *v = val;
+                    Ok(())
                 }
-            }
-            Storage::HashMap(f, h) => {
-                assert_eq!(f(&val), key);
-                match h.insert(key.to_vec(), val) {
-                    Some(old_val) => Ok(old_val),
-                    None => Err(Status::KeyNotFound),
+                None => Err(Status::KeyNotFound),
+            },
+            Storage::BTreeMap(b) => match b.get_mut(key) {
+                Some(v) => {
+                    *v = val;
+                    Ok(())
                 }
-            }
-            Storage::BTreeMap(f, b) => {
-                assert_eq!(f(&val), key);
-                match b.insert(key.to_vec(), val) {
-                    Some(old_val) => Ok(old_val),
-                    None => Err(Status::KeyNotFound),
-                }
-            }
+                None => Err(Status::KeyNotFound),
+            },
         }
     }
 
     fn remove(&mut self, key: &[u8]) -> Result<(), Status> {
         match self {
-            Storage::Vec(v) => {
-                let idx = u64::from_be_bytes(key.try_into().unwrap()) as usize;
-                if idx < v.len() {
-                    v.remove(idx);
-                    Ok(())
-                } else {
-                    Err(Status::KeyNotFound)
-                }
-            }
-            Storage::HashMap(_, h) => match h.remove(key) {
+            Storage::HashMap(h) => match h.remove(key) {
                 Some(_) => Ok(()),
                 None => Err(Status::KeyNotFound),
             },
-            Storage::BTreeMap(_, b) => match b.remove(key) {
+            Storage::BTreeMap(b) => match b.remove(key) {
                 Some(_) => Ok(()),
                 None => Err(Status::KeyNotFound),
             },
@@ -123,19 +95,14 @@ impl InMemIterator {
     fn new(storage: &Storage) -> Self {
         let mut inner = Vec::new();
         match storage {
-            Storage::Vec(v) => {
-                for (i, val) in v.iter().enumerate() {
-                    inner.push((i.to_be_bytes().to_vec(), val.clone()));
+            Storage::HashMap(h) => {
+                for (k, v) in h.iter() {
+                    inner.push((k.clone(), v.clone()));
                 }
             }
-            Storage::HashMap(_, h) => {
-                for (key, val) in h.iter() {
-                    inner.push((key.clone(), val.clone()));
-                }
-            }
-            Storage::BTreeMap(_, b) => {
-                for (key, val) in b.iter() {
-                    inner.push((key.clone(), val.clone()));
+            Storage::BTreeMap(b) => {
+                for (k, v) in b.iter() {
+                    inner.push((k.clone(), v.clone()));
                 }
             }
         }
@@ -290,16 +257,16 @@ impl TxnStorageTrait for InMemStorage {
     }
 
     // Check if value exists
-    fn check_value(
+    fn check_value<K: AsRef<[u8]>>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
     ) -> Result<bool, Status> {
         let inner = self.inner.lock().unwrap();
         match inner.dbs.get(&0) {
             Some(db) => match db.get(c_id) {
-                Some(storage) => Ok(storage.get(key).is_ok()),
+                Some(storage) => Ok(storage.get(key.as_ref()).is_ok()),
                 None => Err(Status::ContainerNotFound),
             },
             None => Err(Status::DBNotFound),
@@ -307,16 +274,16 @@ impl TxnStorageTrait for InMemStorage {
     }
 
     // Get value
-    fn get_value(
+    fn get_value<K: AsRef<[u8]>>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
     ) -> Result<Vec<u8>, Status> {
         let inner = self.inner.lock().unwrap();
         match inner.dbs.get(&0) {
             Some(db) => match db.get(c_id) {
-                Some(storage) => storage.get(key),
+                Some(storage) => storage.get(key.as_ref()),
                 None => Err(Status::ContainerNotFound),
             },
             None => Err(Status::DBNotFound),
@@ -328,12 +295,13 @@ impl TxnStorageTrait for InMemStorage {
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
+        key: Vec<u8>,
         value: Vec<u8>,
-    ) -> Result<Vec<u8>, Status> {
+    ) -> Result<(), Status> {
         let mut inner = self.inner.lock().unwrap();
         match inner.dbs.get_mut(&0) {
             Some(db) => match db.get_mut(c_id) {
-                Some(storage) => storage.insert(value),
+                Some(storage) => storage.insert(key, value),
                 None => Err(Status::ContainerNotFound),
             },
             None => Err(Status::DBNotFound),
@@ -345,17 +313,16 @@ impl TxnStorageTrait for InMemStorage {
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        values: Vec<Vec<u8>>,
-    ) -> Result<Vec<Vec<u8>>, Status> {
+        kvs: Vec<(Vec<u8>, Vec<u8>)>,
+    ) -> Result<(), Status> {
         let mut inner = self.inner.lock().unwrap();
         match inner.dbs.get_mut(&0) {
             Some(db) => match db.get_mut(c_id) {
                 Some(storage) => {
-                    let mut keys = Vec::new();
-                    for val in values {
-                        keys.push(storage.insert(val)?);
+                    for (k, v) in kvs {
+                        storage.insert(k, v)?;
                     }
-                    Ok(keys)
+                    Ok(())
                 }
                 None => Err(Status::ContainerNotFound),
             },
@@ -364,17 +331,20 @@ impl TxnStorageTrait for InMemStorage {
     }
 
     // Update value
-    fn update_value(
+    fn update_value<K>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
         value: Vec<u8>,
-    ) -> Result<Vec<u8>, Status> {
+    ) -> Result<(), Status>
+    where
+        K: AsRef<[u8]>,
+    {
         let mut inner = self.inner.lock().unwrap();
         match inner.dbs.get_mut(&0) {
             Some(db) => match db.get_mut(c_id) {
-                Some(storage) => storage.update(key, value),
+                Some(storage) => storage.update(key.as_ref(), value),
                 None => Err(Status::ContainerNotFound),
             },
             None => Err(Status::DBNotFound),
@@ -382,16 +352,16 @@ impl TxnStorageTrait for InMemStorage {
     }
 
     // Delete value
-    fn delete_value(
+    fn delete_value<K: AsRef<[u8]>>(
         &self,
         txn: &Self::TxnHandle,
         c_id: &ContainerId,
-        key: &[u8],
+        key: K,
     ) -> Result<(), Status> {
         let mut inner = self.inner.lock().unwrap();
         match inner.dbs.get_mut(&0) {
             Some(db) => match db.get_mut(c_id) {
-                Some(storage) => storage.remove(key),
+                Some(storage) => storage.remove(key.as_ref()),
                 None => Err(Status::ContainerNotFound),
             },
             None => Err(Status::DBNotFound),

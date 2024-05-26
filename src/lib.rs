@@ -22,10 +22,6 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    fn dummy_hash_function(data: &[u8]) -> &[u8] {
-        &data[0..std::cmp::min(4, data.len())]
-    }
-
     fn get_in_mem_storage() -> Arc<InMemStorage> {
         Arc::new(InMemStorage::new())
     }
@@ -43,10 +39,8 @@ mod tests {
         let storage = get_in_mem_storage();
         let db_options = DBOptions::new("test_db");
         let db_id = storage.open_db(db_options).unwrap();
-        let container_options = ContainerOptions::new(
-            "test_container".to_string(),
-            ContainerType::Hash(dummy_hash_function),
-        );
+        let container_options =
+            ContainerOptions::new("test_container".to_string(), ContainerType::Hash);
         let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
 
         let c_id = storage
@@ -61,14 +55,17 @@ mod tests {
         let db_options = DBOptions::new("test_db");
         let db_id = storage.open_db(db_options).unwrap();
         let container_options =
-            ContainerOptions::new("test_container".to_string(), ContainerType::Vec);
+            ContainerOptions::new("test_container".to_string(), ContainerType::Hash);
         let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
         let c_id = storage
             .create_container(&txn, &db_id, container_options)
             .unwrap();
 
+        let key = vec![0];
         let value = vec![1, 2, 3, 4];
-        let key = storage.insert_value(&txn, &c_id, value.clone()).unwrap();
+        storage
+            .insert_value(&txn, &c_id, key.clone(), value.clone())
+            .unwrap();
         let retrieved_value = storage.get_value(&txn, &c_id, &key).unwrap();
         assert_eq!(value, retrieved_value);
     }
@@ -79,14 +76,17 @@ mod tests {
         let db_options = DBOptions::new("test_db");
         let db_id = storage.open_db(db_options).unwrap();
         let container_options =
-            ContainerOptions::new("test_container".to_string(), ContainerType::Vec);
+            ContainerOptions::new("test_container".to_string(), ContainerType::Hash);
         let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
         let c_id = storage
             .create_container(&txn, &db_id, container_options)
             .unwrap();
 
+        let key = vec![0];
         let value = vec![1, 2, 3, 4];
-        let key = storage.insert_value(&txn, &c_id, value.clone()).unwrap();
+        storage
+            .insert_value(&txn, &c_id, key.clone(), value.clone())
+            .unwrap();
         let new_value = vec![4, 3, 2, 1];
         storage
             .update_value(&txn, &c_id, &key, new_value.clone())
@@ -107,7 +107,7 @@ mod tests {
         let db_options = DBOptions::new("test_db");
         let db_id = storage.open_db(db_options).unwrap();
         let container_options =
-            ContainerOptions::new("test_container".to_string(), ContainerType::Vec);
+            ContainerOptions::new("test_container".to_string(), ContainerType::BTree);
         let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
         let c_id = storage
             .create_container(&txn, &db_id, container_options)
@@ -115,12 +115,15 @@ mod tests {
 
         // Insert some values
         for i in 0..4 {
-            storage.insert_value(&txn, &c_id, vec![i; 4]).unwrap();
+            let key = vec![i];
+            let value = vec![i as u8; 4];
+            storage.insert_value(&txn, &c_id, key, value).unwrap();
         }
 
         let iter_handle = storage.scan_range(&txn, &c_id, ScanOptions::new()).unwrap();
         let mut count = 0;
-        while let Ok(Some((_key, val))) = storage.iter_next(&iter_handle) {
+        while let Ok(Some((key, val))) = storage.iter_next(&iter_handle) {
+            assert_eq!(key, vec![count]);
             assert_eq!(val, vec![count as u8; 4]);
             count += 1;
         }
