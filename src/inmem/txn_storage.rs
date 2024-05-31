@@ -146,7 +146,19 @@ impl InMemStorage {
     }
 }
 
-pub struct InMemDummyTxnHandle;
+pub struct InMemDummyTxnHandle {
+    db_id: DatabaseId,
+}
+
+impl InMemDummyTxnHandle {
+    pub fn new(db_id: DatabaseId) -> Self {
+        InMemDummyTxnHandle { db_id }
+    }
+
+    pub fn db_id(&self) -> DatabaseId {
+        self.db_id
+    }
+}
 
 impl TxnStorageTrait for InMemStorage {
     type TxnHandle = InMemDummyTxnHandle;
@@ -233,7 +245,7 @@ impl TxnStorageTrait for InMemStorage {
         db_id: &DatabaseId,
         options: TxnOptions,
     ) -> Result<Self::TxnHandle, Status> {
-        Ok(InMemDummyTxnHandle)
+        Ok(InMemDummyTxnHandle::new(*db_id))
     }
 
     // Commit a transaction
@@ -264,7 +276,7 @@ impl TxnStorageTrait for InMemStorage {
         key: K,
     ) -> Result<bool, Status> {
         let inner = self.inner.lock().unwrap();
-        match inner.dbs.get(&0) {
+        match inner.dbs.get(&txn.db_id()) {
             Some(db) => match db.get(c_id) {
                 Some(storage) => Ok(storage.get(key.as_ref()).is_ok()),
                 None => Err(Status::ContainerNotFound),
@@ -281,7 +293,7 @@ impl TxnStorageTrait for InMemStorage {
         key: K,
     ) -> Result<Vec<u8>, Status> {
         let inner = self.inner.lock().unwrap();
-        match inner.dbs.get(&0) {
+        match inner.dbs.get(&txn.db_id()) {
             Some(db) => match db.get(c_id) {
                 Some(storage) => storage.get(key.as_ref()),
                 None => Err(Status::ContainerNotFound),
@@ -299,7 +311,7 @@ impl TxnStorageTrait for InMemStorage {
         value: Vec<u8>,
     ) -> Result<(), Status> {
         let mut inner = self.inner.lock().unwrap();
-        match inner.dbs.get_mut(&0) {
+        match inner.dbs.get_mut(&txn.db_id()) {
             Some(db) => match db.get_mut(c_id) {
                 Some(storage) => storage.insert(key, value),
                 None => Err(Status::ContainerNotFound),
@@ -316,7 +328,7 @@ impl TxnStorageTrait for InMemStorage {
         kvs: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<(), Status> {
         let mut inner = self.inner.lock().unwrap();
-        match inner.dbs.get_mut(&0) {
+        match inner.dbs.get_mut(&txn.db_id()) {
             Some(db) => match db.get_mut(c_id) {
                 Some(storage) => {
                     for (k, v) in kvs {
@@ -342,7 +354,7 @@ impl TxnStorageTrait for InMemStorage {
         K: AsRef<[u8]>,
     {
         let mut inner = self.inner.lock().unwrap();
-        match inner.dbs.get_mut(&0) {
+        match inner.dbs.get_mut(&txn.db_id()) {
             Some(db) => match db.get_mut(c_id) {
                 Some(storage) => storage.update(key.as_ref(), value),
                 None => Err(Status::ContainerNotFound),
@@ -359,7 +371,7 @@ impl TxnStorageTrait for InMemStorage {
         key: K,
     ) -> Result<(), Status> {
         let mut inner = self.inner.lock().unwrap();
-        match inner.dbs.get_mut(&0) {
+        match inner.dbs.get_mut(&txn.db_id()) {
             Some(db) => match db.get_mut(c_id) {
                 Some(storage) => storage.remove(key.as_ref()),
                 None => Err(Status::ContainerNotFound),
@@ -376,7 +388,7 @@ impl TxnStorageTrait for InMemStorage {
         options: ScanOptions,
     ) -> Result<Self::IteratorHandle, Status> {
         let inner = self.inner.lock().unwrap();
-        match inner.dbs.get(&0) {
+        match inner.dbs.get(&txn.db_id()) {
             Some(db) => match db.get(c_id) {
                 Some(storage) => Ok(InMemIterator::new(storage)),
                 None => Err(Status::ContainerNotFound),
