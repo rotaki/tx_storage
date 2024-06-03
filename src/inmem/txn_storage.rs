@@ -87,8 +87,7 @@ impl Storage {
 }
 
 pub struct InMemIterator {
-    inner: Vec<(Vec<u8>, Vec<u8>)>, // Copy all the data from the storage
-    idx: AtomicUsize,
+    inner: Mutex<Vec<(Vec<u8>, Vec<u8>)>>, // Copy all the data from the storage
 }
 
 impl InMemIterator {
@@ -101,24 +100,20 @@ impl InMemIterator {
                 }
             }
             Storage::BTreeMap(b) => {
-                for (k, v) in b.iter() {
+                for (k, v) in b.iter().rev() {
                     inner.push((k.clone(), v.clone()));
                 }
             }
         }
         InMemIterator {
-            inner,
-            idx: AtomicUsize::new(0),
+            inner: Mutex::new(inner),
         }
     }
 
     fn next(&self) -> Option<(Vec<u8>, Vec<u8>)> {
-        let idx = self.idx.fetch_add(1, Ordering::AcqRel);
-        if idx < self.inner.len() {
-            Some(self.inner[idx].clone())
-        } else {
-            None
-        }
+        // keep popping the last element
+        let mut inner = self.inner.lock().unwrap();
+        inner.pop()
     }
 }
 
