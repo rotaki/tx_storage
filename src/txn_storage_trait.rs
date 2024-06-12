@@ -102,9 +102,9 @@ impl ScanOptions {
     }
 }
 
-pub trait TxnStorageTrait {
+pub trait TxnStorageTrait<'a> {
     type TxnHandle;
-    type IteratorHandle;
+    type IteratorHandle: 'a;
 
     // Open connection with the db
     fn open_db(&self, options: DBOptions) -> Result<DatabaseId, Status>;
@@ -204,7 +204,7 @@ pub trait TxnStorageTrait {
         key: K,
     ) -> Result<(), Status>;
 
-    // Scan range
+    // Scan range. While iterating, the container should be alive.
     fn scan_range(
         &self,
         txn: &Self::TxnHandle,
@@ -215,6 +215,6 @@ pub trait TxnStorageTrait {
     // Iterate next
     fn iter_next(&self, iter: &Self::IteratorHandle) -> Result<Option<(Vec<u8>, Vec<u8>)>, Status>;
 
-    // Drop an iterator handle
+    // Drop an iterator handle.
     fn drop_iterator_handle(&self, iter: Self::IteratorHandle) -> Result<(), Status>;
 }
