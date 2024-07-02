@@ -27,12 +27,14 @@ impl Storage {
 
     fn clear(&self) {
         match self {
-            Storage::HashMap(_, h) => {
+            Storage::HashMap(lock, h) => {
+                let _guard = lock.write().unwrap();
                 // SAFETY: we have the write lock on the storage
                 let h = unsafe { &mut *h.get() };
                 h.clear();
             }
-            Storage::BTreeMap(_, b) => {
+            Storage::BTreeMap(lock, b) => {
+                let _guard = lock.write().unwrap();
                 // SAFETY: we have the write lock on the storage
                 let b = unsafe { &mut *b.get() };
                 b.clear();
