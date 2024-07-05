@@ -102,9 +102,9 @@ impl ScanOptions {
     }
 }
 
-pub trait TxnStorageTrait<'a> {
+pub trait TxnStorageTrait {
     type TxnHandle;
-    type IteratorHandle: 'a;
+    type IteratorHandle;
 
     // Open connection with the db
     fn open_db(&self, options: DBOptions) -> Result<DatabaseId, Status>;

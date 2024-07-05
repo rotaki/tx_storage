@@ -4,49 +4,74 @@ use std::{
     sync::{Arc, Mutex, RwLock, RwLockReadGuard},
 };
 
-use crate::prelude::*;
+use crate::{prelude::*, rwlatch::RwLatch};
 
 enum Storage {
-    HashMap(Arc<RwLock<()>>, UnsafeCell<HashMap<Vec<u8>, Vec<u8>>>),
-    BTreeMap(Arc<RwLock<()>>, UnsafeCell<BTreeMap<Vec<u8>, Vec<u8>>>),
+    HashMap(RwLatch, UnsafeCell<HashMap<Vec<u8>, Vec<u8>>>),
+    BTreeMap(RwLatch, UnsafeCell<BTreeMap<Vec<u8>, Vec<u8>>>),
 }
+
+unsafe impl Sync for Storage {}
 
 impl Storage {
     fn new(c_type: ContainerType) -> Self {
         match c_type {
             ContainerType::Hash => {
-                let lock = Arc::new(RwLock::new(()));
-                Storage::HashMap(lock, UnsafeCell::new(HashMap::new()))
+                Storage::HashMap(RwLatch::default(), UnsafeCell::new(HashMap::new()))
             }
             ContainerType::BTree => {
-                let lock = Arc::new(RwLock::new(()));
-                Storage::BTreeMap(lock, UnsafeCell::new(BTreeMap::new()))
+                Storage::BTreeMap(RwLatch::default(), UnsafeCell::new(BTreeMap::new()))
             }
+        }
+    }
+
+    fn shared(&self) {
+        match self {
+            Storage::HashMap(latch, _) => latch.shared(),
+            Storage::BTreeMap(latch, _) => latch.shared(),
+        }
+    }
+
+    fn exclusive(&self) {
+        match self {
+            Storage::HashMap(latch, _) => latch.exclusive(),
+            Storage::BTreeMap(latch, _) => latch.exclusive(),
+        }
+    }
+
+    fn release_shared(&self) {
+        match self {
+            Storage::HashMap(latch, _) => latch.release_shared(),
+            Storage::BTreeMap(latch, _) => latch.release_shared(),
+        }
+    }
+
+    fn release_exclusive(&self) {
+        match self {
+            Storage::HashMap(latch, _) => latch.release_exclusive(),
+            Storage::BTreeMap(latch, _) => latch.release_exclusive(),
         }
     }
 
     fn clear(&self) {
+        self.exclusive();
         match self {
-            Storage::HashMap(lock, h) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+            Storage::HashMap(_, h) => {
                 let h = unsafe { &mut *h.get() };
                 h.clear();
             }
-            Storage::BTreeMap(lock, b) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+            Storage::BTreeMap(_, b) => {
                 let b = unsafe { &mut *b.get() };
                 b.clear();
             }
         }
+        self.release_exclusive();
     }
 
     fn insert(&self, key: Vec<u8>, val: Vec<u8>) -> Result<(), Status> {
-        match self {
-            Storage::HashMap(lock, h) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+        self.exclusive();
+        let result = match self {
+            Storage::HashMap(_, h) => {
                 let h = unsafe { &mut *h.get() };
                 match h.entry(key) {
                     std::collections::hash_map::Entry::Occupied(_) => Err(Status::KeyExists),
@@ -56,9 +81,7 @@ impl Storage {
                     }
                 }
             }
-            Storage::BTreeMap(lock, b) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+            Storage::BTreeMap(_, b) => {
                 let b = unsafe { &mut *b.get() };
                 match b.entry(key) {
                     std::collections::btree_map::Entry::Occupied(_) => Err(Status::KeyExists),
@@ -68,37 +91,37 @@ impl Storage {
                     }
                 }
             }
-        }
+        };
+        self.release_exclusive();
+        result
     }
 
     fn get(&self, key: &[u8]) -> Result<Vec<u8>, Status> {
-        match self {
-            Storage::HashMap(lock, h) => {
-                let _guard = lock.read().unwrap();
-                // SAFETY: we have the read lock on the storage
+        self.shared();
+        let result = match self {
+            Storage::HashMap(_, h) => {
                 let h = unsafe { &*h.get() };
                 match h.get(key) {
                     Some(val) => Ok(val.clone()),
                     None => Err(Status::KeyNotFound),
                 }
             }
-            Storage::BTreeMap(lock, b) => {
-                let _guard = lock.read().unwrap();
-                // SAFETY: we have the read lock on the storage
+            Storage::BTreeMap(_, b) => {
                 let b = unsafe { &*b.get() };
                 match b.get(key) {
                     Some(val) => Ok(val.clone()),
                     None => Err(Status::KeyNotFound),
                 }
             }
-        }
+        };
+        self.release_shared();
+        result
     }
 
     fn update(&self, key: &[u8], val: Vec<u8>) -> Result<(), Status> {
-        match self {
-            Storage::HashMap(lock, h) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+        self.exclusive();
+        let result = match self {
+            Storage::HashMap(_, h) => {
                 let h = unsafe { &mut *h.get() };
                 match h.get_mut(key) {
                     Some(v) => {
@@ -108,9 +131,7 @@ impl Storage {
                     None => Err(Status::KeyNotFound),
                 }
             }
-            Storage::BTreeMap(lock, b) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+            Storage::BTreeMap(_, b) => {
                 let b = unsafe { &mut *b.get() };
                 match b.get_mut(key) {
                     Some(v) => {
@@ -120,69 +141,82 @@ impl Storage {
                     None => Err(Status::KeyNotFound),
                 }
             }
-        }
+        };
+        self.release_exclusive();
+        result
     }
 
     fn remove(&self, key: &[u8]) -> Result<(), Status> {
-        match self {
-            Storage::HashMap(lock, h) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+        self.shared();
+        let result = match self {
+            Storage::HashMap(_, h) => {
                 let h = unsafe { &mut *h.get() };
                 match h.remove(key) {
                     Some(_) => Ok(()),
                     None => Err(Status::KeyNotFound),
                 }
             }
-            Storage::BTreeMap(lock, b) => {
-                let _guard = lock.write().unwrap();
-                // SAFETY: we have the write lock on the storage
+            Storage::BTreeMap(_, b) => {
                 let b = unsafe { &mut *b.get() };
                 match b.remove(key) {
                     Some(_) => Ok(()),
                     None => Err(Status::KeyNotFound),
                 }
             }
-        }
+        };
+        self.release_shared();
+        result
     }
 
-    fn iter(&self) -> InMemIterator {
-        match self {
-            Storage::HashMap(lock, h) => {
-                let guard = lock.read().unwrap();
-                // SAFETY: we have the read lock on the storage
+    fn iter(self: &Arc<Self>) -> InMemIterator {
+        self.shared(); // Latch the storage while iterator is alive. When iterator is dropped, the latch must be released.
+        match self.as_ref() {
+            Storage::HashMap(_, h) => {
                 let h = unsafe { &*h.get() };
-                InMemIterator::hash(guard, h.iter())
+                InMemIterator::hash(Arc::clone(self), h.iter())
             }
-            Storage::BTreeMap(lock, b) => {
-                let guard = lock.read().unwrap();
-                // SAFETY: we have the read lock on the storage
+            Storage::BTreeMap(_, b) => {
                 let b = unsafe { &*b.get() };
-                InMemIterator::btree(guard, b.iter())
+                InMemIterator::btree(Arc::clone(self), b.iter())
             }
         }
     }
 }
 
-pub enum InMemIterator<'a> {
+pub enum InMemIterator {
     // Storage and the iterator
     Hash(
-        RwLockReadGuard<'a, ()>,
-        Mutex<std::collections::hash_map::Iter<'a, Vec<u8>, Vec<u8>>>,
+        Arc<Storage>,
+        Mutex<std::collections::hash_map::Iter<'static, Vec<u8>, Vec<u8>>>,
     ),
     BTree(
-        RwLockReadGuard<'a, ()>,
-        Mutex<std::collections::btree_map::Iter<'a, Vec<u8>, Vec<u8>>>,
+        Arc<Storage>,
+        Mutex<std::collections::btree_map::Iter<'static, Vec<u8>, Vec<u8>>>,
     ),
 }
 
-impl<'a> InMemIterator<'a> {
-    fn hash(storage_guard: RwLockReadGuard<'a, ()>, iter: std::collections::hash_map::Iter<'a, Vec<u8>, Vec<u8>>) -> Self {
-        InMemIterator::Hash(storage_guard, Mutex::new(iter))
+impl Drop for InMemIterator {
+    fn drop(&mut self) {
+        match self {
+            InMemIterator::Hash(storage, _) => storage.release_shared(),
+            InMemIterator::BTree(storage, _) => storage.release_shared(),
+        }
+    }
+}
+
+impl InMemIterator {
+    fn hash(
+        storage: Arc<Storage>,
+        iter: std::collections::hash_map::Iter<'static, Vec<u8>, Vec<u8>>,
+    ) -> Self {
+        InMemIterator::Hash(storage, Mutex::new(iter))
     }
 
-    fn btree(storage_guard: RwLockReadGuard<'a, ()>, iter: std::collections::btree_map::Iter<'a, Vec<u8>, Vec<u8>>) -> Self {
-        InMemIterator::BTree(storage_guard, Mutex::new(iter))
+    fn btree(
+        storage: Arc<Storage>,
+        iter: std::collections::btree_map::Iter<'static, Vec<u8>, Vec<u8>>,
+    ) -> Self {
+        InMemIterator::BTree(storage, Mutex::new(iter))
     }
 
     fn next(&self) -> Option<(Vec<u8>, Vec<u8>)> {
@@ -222,7 +256,7 @@ impl<'a> InMemIterator<'a> {
 pub struct InMemStorage {
     db_created: UnsafeCell<bool>,
     container_lock: RwLock<()>, // lock for container operations
-    containers: UnsafeCell<Vec<Box<Storage>>>, // Storage is in a Box in order to prevent moving when resizing the vector
+    containers: UnsafeCell<Vec<Arc<Storage>>>, // Storage is in a Box in order to prevent moving when resizing the vector
 }
 
 unsafe impl Sync for InMemStorage {}
@@ -257,9 +291,9 @@ impl InMemDummyTxnHandle {
     }
 }
 
-impl<'a> TxnStorageTrait<'a> for InMemStorage {
+impl TxnStorageTrait for InMemStorage {
     type TxnHandle = InMemDummyTxnHandle;
-    type IteratorHandle = InMemIterator<'a>;
+    type IteratorHandle = InMemIterator;
 
     // Open connection with the db
     fn open_db(&self, _options: DBOptions) -> Result<DatabaseId, Status> {
@@ -302,7 +336,7 @@ impl<'a> TxnStorageTrait<'a> for InMemStorage {
         }
         let _guard = self.container_lock.write().unwrap();
         let containers = unsafe { &mut *self.containers.get() };
-        let storage = Box::new(Storage::new(options.get_type()));
+        let storage = Arc::new(Storage::new(options.get_type()));
         containers.push(storage);
         Ok((containers.len() - 1) as ContainerId)
     }
@@ -481,7 +515,7 @@ impl<'a> TxnStorageTrait<'a> for InMemStorage {
         // is required because we assume that container is
         // already created.
         let containers = unsafe { &*self.containers.get() };
-        Ok(containers[*c_id as usize].as_ref().iter())
+        Ok(containers[*c_id as usize].iter())
     }
 
     // Iterate next

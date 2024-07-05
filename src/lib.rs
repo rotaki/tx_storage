@@ -1,6 +1,6 @@
-mod txn_storage_trait;
-
 mod inmem;
+mod rwlatch;
+mod txn_storage_trait;
 
 pub use crate::inmem::{InMemDummyTxnHandle, InMemIterator, InMemStorage};
 pub use txn_storage_trait::{
@@ -33,7 +33,7 @@ mod tests {
         assert!(storage.delete_db(&db_id).is_ok());
     }
 
-    fn setup_table<'a, T: TxnStorageTrait<'a>>(
+    fn setup_table<T: TxnStorageTrait>(
         storage: impl AsRef<T>,
         c_type: ContainerType,
     ) -> (DatabaseId, ContainerId) {
@@ -121,7 +121,6 @@ mod tests {
         storage.commit_txn(&txn, false).unwrap();
     }
 
-
     #[test]
     fn test_concurrent_insert() {
         let storage = get_in_mem_storage();
@@ -136,7 +135,7 @@ mod tests {
             threads.push(thread::spawn(move || {
                 for k in 0..num_keys_per_thread {
                     let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
-                    let key: usize = i*num_keys_per_thread + k;
+                    let key: usize = i * num_keys_per_thread + k;
                     let key = key.to_be_bytes().to_vec();
                     let value = key.clone();
                     storage
@@ -145,7 +144,7 @@ mod tests {
                     storage.commit_txn(&txn, false).unwrap();
                 }
             }));
-        };
+        }
         for t in threads {
             t.join().unwrap();
         }
@@ -160,7 +159,7 @@ mod tests {
             assert_eq!(val, key.to_be_bytes().to_vec());
             count += 1;
         }
-        assert_eq!(count, num_threads*num_keys_per_thread);
+        assert_eq!(count, num_threads * num_keys_per_thread);
     }
 
     #[test]
@@ -194,7 +193,7 @@ mod tests {
             threads.push(thread::spawn(move || {
                 for k in 0..num_keys_per_thread {
                     let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
-                    let key: usize = i*num_keys_per_thread + k;
+                    let key: usize = i * num_keys_per_thread + k;
                     let key = key.to_be_bytes().to_vec();
                     let value = key.clone();
                     storage
@@ -203,7 +202,7 @@ mod tests {
                     storage.commit_txn(&txn, false).unwrap();
                 }
             }));
-        };
+        }
         // Create a new container and delete the first container
         let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
         let _c_id3 = storage
@@ -223,7 +222,9 @@ mod tests {
 
         // Check if all values are inserted
         let txn = storage.begin_txn(&db_id, TxnOptions::default()).unwrap();
-        let iter_handle = storage.scan_range(&txn, &c_id2, ScanOptions::new()).unwrap();
+        let iter_handle = storage
+            .scan_range(&txn, &c_id2, ScanOptions::new())
+            .unwrap();
         let mut count = 0;
         while let Ok(Some((key, val))) = storage.iter_next(&iter_handle) {
             let key = usize::from_be_bytes(key.as_slice().try_into().unwrap());
@@ -231,7 +232,7 @@ mod tests {
             assert_eq!(val, key.to_be_bytes().to_vec());
             count += 1;
         }
-        assert_eq!(count, num_threads*num_keys_per_thread);
+        assert_eq!(count, num_threads * num_keys_per_thread);
         // println!("list_containers: {:?}", storage.list_containers(&txn, &db_id).unwrap());
     }
 }
